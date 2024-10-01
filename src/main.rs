@@ -1,9 +1,14 @@
-use bevy::color::palettes::css::{BLUE, WHITE};
+mod world_generator;
+
+use bevy::color::palettes::css::{BLUE, RED, WHITE};
+use bevy::color::palettes::tailwind::RED_200;
 use bevy::pbr::wireframe::{WireframeColor, WireframeConfig, WireframePlugin};
 use bevy::prelude::*;
 use bevy::render::{
     mesh::Indices, render_asset::RenderAssetUsages, render_resource::PrimitiveTopology,
 };
+
+use world_generator::world_generator::WorldGeneratorPlugin;
 
 #[derive(Component, Debug)]
 struct RotatingCube {
@@ -12,7 +17,11 @@ struct RotatingCube {
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, WireframePlugin))
+        .add_plugins((
+            DefaultPlugins.set(ImagePlugin::default_nearest()),
+            WireframePlugin,
+            WorldGeneratorPlugin,
+        ))
         .insert_resource(WireframeConfig {
             // The global wireframe config enables drawing of wireframes on every mesh,
             // except those with `NoWireframe`. Meshes with `Wireframe` will always have a wireframe,
@@ -22,25 +31,26 @@ fn main() {
             // Can be changed per mesh using the `WireframeColor` component.
             default_color: WHITE.into(),
         }) // Loads default Bevy plugins (rendering, input, etc.)
-        .add_systems(Startup, (camera_setup, setup_cube))
-        .add_systems(Update, rotate_cube) // Startup systems for camera and cube
+        .add_systems(Startup, (camera_setup))
+        // .add_systems(Update, rotate_cube) // Startup systems for camera and cube
         .run();
 }
 
 // Setup the camera and light
 fn camera_setup(mut commands: Commands) {
-    let camera_and_light_transform =
-        Transform::from_xyz(1.8, 1.8, 1.8).looking_at(Vec3::ZERO, Vec3::Y);
+    let light_transform = Transform::from_xyz(1.8, 1.8, 1.8).looking_at(Vec3::ZERO, Vec3::Y);
+
+    let camera_transform = Transform::from_xyz(3.5, 3.5, 3.5).looking_at(Vec3::ZERO, Vec3::Y);
 
     // Camera in 3D space.
     commands.spawn(Camera3dBundle {
-        transform: camera_and_light_transform,
+        transform: camera_transform,
         ..default()
     });
 
     // Light up the scene.
     commands.spawn(PointLightBundle {
-        transform: camera_and_light_transform,
+        transform: light_transform,
         ..default()
     });
 }
@@ -58,22 +68,28 @@ fn setup_cube(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    // asset_server: Res<AssetServer>,
+    asset_server: Res<AssetServer>,
 ) {
     // Load the texture for the cube
-    // let texture_handle = asset_server.load("texture.png");
+    let texture_handle = asset_server.load("texture.png");
 
     // Create the cube mesh
-    let cube_mesh = create_simple_cube_mesh();
+    let cube_mesh2 = create_simple_cube_mesh();
+    // Add the cube to the scene with a texture applied
 
     // Add the cube to the scene with a texture applied
     commands.spawn((
         PbrBundle {
-            mesh: meshes.add(cube_mesh), // Add the custom cube mesh
-            material: materials.add(Color::from(BLUE)),
+            mesh: meshes.add(cube_mesh2), // Add the custom cube mesh
+            material: materials.add(StandardMaterial {
+                base_color_texture: Some(texture_handle),
+                // Apply the texture to the cube
+                ..default()
+            }),
+            transform: Transform::from_xyz(1.25, 0.0, -1.25),
             ..default()
         },
-        RotatingCube { speed: 1.0 },
+        RotatingCube { speed: 0.15 },
         WireframeColor {
             color: Color::WHITE,
         },
@@ -82,140 +98,36 @@ fn setup_cube(
 
 // Function to create a simple cube mesh
 fn create_simple_cube_mesh() -> Mesh {
-    return Mesh::new(
+    let vertices = vec![
+        [-0.5, -0.5, -0.5], // 0: left  bottom back
+        [0.5, -0.5, -0.5],  // 1: right bottom back
+        [0.5, 0.5, -0.5],   // 2: right top    back
+        [-0.5, 0.5, -0.5],  // 3: left  top    back
+        [-0.5, -0.5, 0.5],  // 4: left  bottom front
+        [0.5, -0.5, 0.5],   // 5: right bottom front
+        [0.5, 0.5, 0.5],    // 6: right top    front
+        [-0.5, 0.5, 0.5],   // 7: left  top    front
+    ];
+
+    let indices = vec![
+        // Front face
+        4, 5, 6, 4, 6, 7, // Back face
+        1, 0, 3, 1, 3, 2, // Left face
+        0, 4, 7, 0, 7, 3, // Right face
+        5, 1, 2, 5, 2, 6, // Top face
+        3, 7, 6, 3, 6, 2, // Bottom face
+        4, 0, 1, 4, 1, 5,
+    ];
+
+    let mut mesh = Mesh::new(
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
     )
-    .with_inserted_attribute(
-        Mesh::ATTRIBUTE_POSITION,
-        // Each array is an [x, y, z] coordinate in local space.
-        // The camera coordinate space is right-handed x-right, y-up, z-back. This means "forward" is -Z.
-        // Meshes always rotate around their local [0, 0, 0] when a rotation is applied to their Transform.
-        // By centering our mesh around the origin, rotating the mesh preserves its center of mass.
-        vec![
-            // top (facing towards +y)
-            [-0.5, 0.5, -0.5], // vertex with index 0
-            [0.5, 0.5, -0.5],  // vertex with index 1
-            [0.5, 0.5, 0.5],   // etc. until 23
-            [-0.5, 0.5, 0.5],
-            // bottom   (-y)
-            [-0.5, -0.5, -0.5],
-            [0.5, -0.5, -0.5],
-            [0.5, -0.5, 0.5],
-            [-0.5, -0.5, 0.5],
-            // right    (+x)
-            [0.5, -0.5, -0.5],
-            [0.5, -0.5, 0.5],
-            [0.5, 0.5, 0.5], // This vertex is at the same position as vertex with index 2, but they'll have different UV and normal
-            [0.5, 0.5, -0.5],
-            // left     (-x)
-            [-0.5, -0.5, -0.5],
-            [-0.5, -0.5, 0.5],
-            [-0.5, 0.5, 0.5],
-            [-0.5, 0.5, -0.5],
-            // back     (+z)
-            [-0.5, -0.5, 0.5],
-            [-0.5, 0.5, 0.5],
-            [0.5, 0.5, 0.5],
-            [0.5, -0.5, 0.5],
-            // forward  (-z)
-            [-0.5, -0.5, -0.5],
-            [-0.5, 0.5, -0.5],
-            [0.5, 0.5, -0.5],
-            [0.5, -0.5, -0.5],
-        ],
-    )
-    // Set-up UV coordinates to point to the upper (V < 0.5), "dirt+grass" part of the texture.
-    // Take a look at the custom image (assets/textures/array_texture.png)
-    // so the UV coords will make more sense
-    // Note: (0.0, 0.0) = Top-Left in UV mapping, (1.0, 1.0) = Bottom-Right in UV mapping
-    .with_inserted_attribute(
-        Mesh::ATTRIBUTE_UV_0,
-        vec![
-            // UV mapping for the front face
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [1.0, 1.0],
-            [0.0, 1.0], // Front face
-            // UV mapping for the back face
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [1.0, 1.0],
-            [0.0, 1.0], // Back face
-            // UV mapping for the left face
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [1.0, 1.0],
-            [0.0, 1.0], // Left face
-            // UV mapping for the right face
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [1.0, 1.0],
-            [0.0, 1.0], // Right face
-            // UV mapping for the top face
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [1.0, 1.0],
-            [0.0, 1.0], // Top face
-            // UV mapping for the bottom face
-            [0.0, 0.0],
-            [1.0, 0.0],
-            [1.0, 1.0],
-            [0.0, 1.0], // Bottom face
-        ],
-    )
-    // For meshes with flat shading, normals are orthogonal (pointing out) from the direction of
-    // the surface.
-    // Normals are required for correct lighting calculations.
-    // Each array represents a normalized vector, which length should be equal to 1.0.
-    .with_inserted_attribute(
-        Mesh::ATTRIBUTE_NORMAL,
-        vec![
-            // Normals for the top side (towards +y)
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            // Normals for the bottom side (towards -y)
-            [0.0, -1.0, 0.0],
-            [0.0, -1.0, 0.0],
-            [0.0, -1.0, 0.0],
-            [0.0, -1.0, 0.0],
-            // Normals for the right side (towards +x)
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            // Normals for the left side (towards -x)
-            [-1.0, 0.0, 0.0],
-            [-1.0, 0.0, 0.0],
-            [-1.0, 0.0, 0.0],
-            [-1.0, 0.0, 0.0],
-            // Normals for the back side (towards +z)
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-            [0.0, 0.0, 1.0],
-            // Normals for the forward side (towards -z)
-            [0.0, 0.0, -1.0],
-            [0.0, 0.0, -1.0],
-            [0.0, 0.0, -1.0],
-            [0.0, 0.0, -1.0],
-        ],
-    )
-    // Create the triangles out of the 24 vertices we created.
-    // To construct a square, we need 2 triangles, therefore 12 triangles in total.
-    // To construct a triangle, we need the indices of its 3 defined vertices, adding them one
-    // by one, in a counter-clockwise order (relative to the position of the viewer, the order
-    // should appear counter-clockwise from the front of the triangle, in this case from outside the cube).
-    // Read more about how to correctly build a mesh manually in the Bevy documentation of a Mesh,
-    // further examples and the implementation of the built-in shapes.
-    .with_inserted_indices(Indices::U32(vec![
-        0, 3, 1, 1, 3, 2, // triangles making up the top (+y) facing side.
-        4, 5, 7, 5, 6, 7, // bottom (-y)
-        8, 11, 9, 9, 11, 10, // right (+x)
-        12, 13, 15, 13, 14, 15, // left (-x)
-        16, 19, 17, 17, 19, 18, // back (+z)
-        20, 21, 23, 21, 22, 23, // forward (-z)
-    ]));
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
+    .with_inserted_indices(Indices::U32(indices));
+
+    mesh.duplicate_vertices();
+    mesh.compute_flat_normals();
+
+    return mesh;
 }
