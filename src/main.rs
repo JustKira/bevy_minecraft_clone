@@ -1,26 +1,23 @@
 mod world_generator;
 
-use bevy::color::palettes::css::{BLUE, RED, WHITE};
-use bevy::color::palettes::tailwind::RED_200;
+use bevy::color::palettes::css::WHITE;
+
 use bevy::pbr::wireframe::{WireframeColor, WireframeConfig, WireframePlugin};
 use bevy::prelude::*;
-use bevy::render::{
-    mesh::Indices, render_asset::RenderAssetUsages, render_resource::PrimitiveTopology,
-};
 
+use bevy::render::mesh::{Indices, PrimitiveTopology};
+use bevy::render::render_asset::RenderAssetUsages;
 use world_generator::world_generator::WorldGeneratorPlugin;
 
-#[derive(Component, Debug)]
-struct RotatingCube {
-    speed: f32,
-}
-
+mod bevy_basic_camera;
+use bevy_basic_camera::{CameraController, CameraControllerPlugin};
 fn main() {
     App::new()
         .add_plugins((
             DefaultPlugins.set(ImagePlugin::default_nearest()),
             WireframePlugin,
             WorldGeneratorPlugin,
+            CameraControllerPlugin,
         ))
         .insert_resource(WireframeConfig {
             // The global wireframe config enables drawing of wireframes on every mesh,
@@ -31,37 +28,77 @@ fn main() {
             // Can be changed per mesh using the `WireframeColor` component.
             default_color: WHITE.into(),
         }) // Loads default Bevy plugins (rendering, input, etc.)
-        .add_systems(Startup, (camera_setup))
+        .add_systems(Startup, (setup, setup_cube))
         // .add_systems(Update, rotate_cube) // Startup systems for camera and cube
         .run();
 }
 
-// Setup the camera and light
-fn camera_setup(mut commands: Commands) {
-    let light_transform = Transform::from_xyz(1.8, 1.8, 1.8).looking_at(Vec3::ZERO, Vec3::Y);
+fn setup(mut commands: Commands) {
+    // Cube
 
-    let camera_transform = Transform::from_xyz(3.5, 3.5, 3.5).looking_at(Vec3::ZERO, Vec3::Y);
-
-    // Camera in 3D space.
-    commands.spawn(Camera3dBundle {
-        transform: camera_transform,
-        ..default()
-    });
-
-    // Light up the scene.
+    // light
     commands.spawn(PointLightBundle {
-        transform: light_transform,
+        transform: Transform::from_xyz(4.0, 8.0, 6.0),
         ..default()
     });
+
+    // camera
+    commands
+        .spawn(Camera3dBundle {
+            transform: Transform::from_xyz(3.0, 3.0, 3.0)
+                .looking_at(Vec3::new(0.0, 0.5, 0.0), Vec3::Y),
+            ..default()
+        })
+        .insert(
+            CameraController {
+                orbit_mode: true,
+                orbit_focus: Vec3::new(0.0, 0.5, 0.0),
+                ..default()
+            }
+            .print_controls(),
+        );
 }
 
-fn rotate_cube(time: Res<Time>, mut query: Query<(&RotatingCube, &mut Transform)>) {
-    for (rotating_cube, mut transform) in query.iter_mut() {
-        transform.rotate(Quat::from_rotation_y(
-            rotating_cube.speed * time.delta_seconds(),
-        ));
-    }
-}
+// fn rotate_cube(time: Res<Time>, mut query: Query<(&RotatingCube, &mut Transform)>) {
+//     for (rotating_cube, mut transform) in query.iter_mut() {
+//         transform.rotate(Quat::from_rotation_y(
+//             rotating_cube.speed * time.delta_seconds(),
+//         ));
+//     }
+// }
+
+// // System to create and spawn the cube with a texture
+// fn setup_cube(
+//     mut commands: Commands,
+//     mut meshes: ResMut<Assets<Mesh>>,
+//     mut materials: ResMut<Assets<StandardMaterial>>,
+//     asset_server: Res<AssetServer>,
+// ) {
+//     // Load the texture for the cube
+//     let texture_handle = asset_server.load("texture.png");
+
+//     // Create the cube mesh
+//     let cube_mesh2 = create_simple_cube_mesh();
+//     // Add the cube to the scene with a texture applied
+
+//     // Add the cube to the scene with a texture applied
+//     commands.spawn((
+//         PbrBundle {
+//             mesh: meshes.add(cube_mesh2), // Add the custom cube mesh
+//             material: materials.add(StandardMaterial {
+//                 base_color_texture: Some(texture_handle),
+//                 // Apply the texture to the cube
+//                 ..default()
+//             }),
+//             transform: Transform::from_xyz(1.25, 0.0, -1.25),
+//             ..default()
+//         },
+//         RotatingCube { speed: 0.15 },
+//         WireframeColor {
+//             color: Color::WHITE,
+//         },
+//     ));
+// }
 
 // System to create and spawn the cube with a texture
 fn setup_cube(
@@ -89,7 +126,6 @@ fn setup_cube(
             transform: Transform::from_xyz(1.25, 0.0, -1.25),
             ..default()
         },
-        RotatingCube { speed: 0.15 },
         WireframeColor {
             color: Color::WHITE,
         },
