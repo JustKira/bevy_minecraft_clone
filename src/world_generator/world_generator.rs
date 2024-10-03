@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use bevy::render::{
     mesh::Indices, render_asset::RenderAssetUsages, render_resource::PrimitiveTopology,
 };
+// use fastnoise_lite::*;
 
 pub struct WorldGeneratorPlugin;
 
@@ -18,13 +19,15 @@ fn generate_chunk(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    println!("Generating chunk...");
-    let noise_map = vec![
-        vec![1, 1, 0, 0],
-        vec![1, 0, 0, 0],
-        vec![1, 0, 1, 1],
-        vec![0, 0, 1, 0],
-    ];
+    const CHUNK_SIZE: u32 = 32;
+
+    // let mut noise = FastNoiseLite::with_seed(1325);
+
+    // noise.set_fractal_type(Some(FractalType::FBm));
+    // noise.set_fractal_octaves(Some(5));
+    // noise.set_frequency(Some(0.035));
+    // noise.set_fractal_weighted_strength(Some(-0.5));
+    // noise.set_noise_type(Some(NoiseType::OpenSimplex2));
 
     // let mut chunk: [[u8; 4]; 4] = [[0; 4]; 4];
 
@@ -32,33 +35,27 @@ fn generate_chunk(
 
     let mut indices: Vec<u32> = Vec::new();
 
-    let mut cell = 0;
+    for x in 0..CHUNK_SIZE + 1 {
+        for y in 0..CHUNK_SIZE + 1 {
+            vertices.push([x as f32, 0.0, y as f32]);
+        }
+    }
 
-    for (y, row) in noise_map.iter().enumerate() {
-        for (x, _) in row.iter().enumerate() {
-            let bl = [x as f32, 0.0, y as f32];
-            let br = [(x + 1) as f32, 0.0, y as f32];
-            let tl = [x as f32, 0.0, (y + 1) as f32];
-            let tr = [(x + 1) as f32, 0.0, (y + 1) as f32];
+    for x in 0..CHUNK_SIZE {
+        for y in 0..CHUNK_SIZE {
+            let top_left = y * (CHUNK_SIZE + 1) + x;
+            let top_right = top_left + 1;
+            let bottom_left = (y + 1) * (CHUNK_SIZE + 1) + x;
+            let bottom_right = bottom_left + 1;
 
-            vertices.push(bl);
-            vertices.push(br);
-            vertices.push(tl);
-            vertices.push(tr);
+            // First triangle
+            indices.push(bottom_right);
+            indices.push(bottom_left);
+            indices.push(top_left);
 
-            //first triangle 0 2 1
-            indices.push(cell);
-            indices.push(cell + 2);
-            indices.push(cell + 1);
-
-            //second triangle 1 2 3
-            indices.push(cell + 1);
-            indices.push(cell + 2);
-            indices.push(cell + 3);
-
-            cell += 4;
-
-            // chunk[y][x] = *value;
+            indices.push(top_right);
+            indices.push(bottom_right);
+            indices.push(top_left);
         }
     }
 
