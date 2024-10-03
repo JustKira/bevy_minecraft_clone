@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::render::{
     mesh::Indices, render_asset::RenderAssetUsages, render_resource::PrimitiveTopology,
 };
-// use fastnoise_lite::*;
+use fastnoise_lite::*;
 
 pub struct WorldGeneratorPlugin;
 
@@ -19,17 +19,15 @@ fn generate_chunk(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    const CHUNK_SIZE: u32 = 32;
+    const CHUNK_SIZE: u32 = 16;
 
-    // let mut noise = FastNoiseLite::with_seed(1325);
+    let mut noise = FastNoiseLite::with_seed(1325);
 
-    // noise.set_fractal_type(Some(FractalType::FBm));
-    // noise.set_fractal_octaves(Some(5));
-    // noise.set_frequency(Some(0.035));
-    // noise.set_fractal_weighted_strength(Some(-0.5));
-    // noise.set_noise_type(Some(NoiseType::OpenSimplex2));
-
-    // let mut chunk: [[u8; 4]; 4] = [[0; 4]; 4];
+    noise.set_fractal_type(Some(FractalType::FBm));
+    noise.set_fractal_octaves(Some(5));
+    noise.set_frequency(Some(0.035));
+    noise.set_fractal_weighted_strength(Some(-0.5));
+    noise.set_noise_type(Some(NoiseType::OpenSimplex2));
 
     let mut vertices: Vec<[f32; 3]> = Vec::new();
 
@@ -37,7 +35,37 @@ fn generate_chunk(
 
     for x in 0..CHUNK_SIZE + 1 {
         for y in 0..CHUNK_SIZE + 1 {
-            vertices.push([x as f32, 0.0, y as f32]);
+            let ne = (noise.get_noise_2d(x as f32, (y as i32 + 1) as f32) + 1.0) / 2.0;
+            let nw = (noise.get_noise_2d((x as i32 - 1) as f32, (y as i32 + 1) as f32) + 1.0) / 2.0;
+            let se = (noise.get_noise_2d(x as f32, y as f32) + 1.0) / 2.0;
+            let sw = (noise.get_noise_2d((x as i32 - 1) as f32, y as f32) + 1.0) / 2.0;
+
+            let mut debug_noise: Vec<[f32; 2]> = Vec::new();
+            let avg = (ne.round() + nw.round() + se.round() + sw.round()) / 4.0;
+
+            if avg >= 0.25 {
+                debug_noise.push([nw.round(), ne.round()]);
+                debug_noise.push([sw.round(), se.round()]);
+
+                println!("[{:?},{:?}] : {:?}", x, y, debug_noise);
+                vertices.push([x as f32, 0.0, y as f32]);
+
+                let debug_cube = debug_cube();
+
+                commands.spawn((
+                    PbrBundle {
+                        mesh: meshes.add(debug_cube), // Add the custom cube mesh
+                        transform: Transform::from_xyz(x as f32, 0.0, y as f32)
+                            .with_scale(Vec3::from([0.25, 0.25, 0.25])),
+                        ..default()
+                    },
+                    WireframeColor {
+                        color: Color::WHITE,
+                    },
+                ));
+            } else {
+                vertices.push([x as f32, 0.0, y as f32]);
+            }
         }
     }
 
@@ -59,9 +87,6 @@ fn generate_chunk(
         }
     }
 
-    println!("{:?}", vertices);
-    println!("{:?}", indices);
-
     let mesh = Mesh::new(
         PrimitiveTopology::TriangleList,
         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
@@ -76,7 +101,42 @@ fn generate_chunk(
             ..default()
         },
         WireframeColor {
-            color: Color::WHITE,
+            color: Color::BLACK,
         },
     ));
+}
+
+fn debug_cube() -> Mesh {
+    let vertices = vec![
+        [-0.5, -0.5, -0.5], // 0: left  bottom back
+        [0.5, -0.5, -0.5],  // 1: right bottom back
+        [0.5, 0.5, -0.5],   // 2: right top    back
+        [-0.5, 0.5, -0.5],  // 3: left  top    back
+        [-0.5, -0.5, 0.5],  // 4: left  bottom front
+        [0.5, -0.5, 0.5],   // 5: right bottom front
+        [0.5, 0.5, 0.5],    // 6: right top    front
+        [-0.5, 0.5, 0.5],   // 7: left  top    front
+    ];
+
+    let indices = vec![
+        // Front face
+        4, 5, 6, 4, 6, 7, // Back face
+        1, 0, 3, 1, 3, 2, // Left face
+        0, 4, 7, 0, 7, 3, // Right face
+        5, 1, 2, 5, 2, 6, // Top face
+        3, 7, 6, 3, 6, 2, // Bottom face
+        4, 0, 1, 4, 1, 5,
+    ];
+
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, vertices)
+    .with_inserted_indices(Indices::U32(indices));
+
+    mesh.duplicate_vertices();
+    mesh.compute_flat_normals();
+
+    return mesh;
 }
