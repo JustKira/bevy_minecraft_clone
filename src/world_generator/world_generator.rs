@@ -1,4 +1,4 @@
-use bevy::color::palettes::css::WHITE;
+use bevy::color::palettes::css::{BLUE, RED, WHITE};
 use bevy::pbr::wireframe::WireframeColor;
 use bevy::prelude::*;
 use bevy::render::{
@@ -19,14 +19,14 @@ fn generate_chunk(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    const CHUNK_SIZE: u32 = 16;
+    const CHUNK_SIZE: u32 = 32;
 
     let mut noise = FastNoiseLite::with_seed(1325);
 
     noise.set_fractal_type(Some(FractalType::FBm));
     noise.set_fractal_octaves(Some(5));
-    noise.set_frequency(Some(0.035));
-    noise.set_fractal_weighted_strength(Some(-0.5));
+    noise.set_frequency(Some(0.04));
+    noise.set_fractal_weighted_strength(Some(0.5));
     noise.set_noise_type(Some(NoiseType::OpenSimplex2));
 
     let mut vertices: Vec<[f32; 3]> = Vec::new();
@@ -41,13 +41,26 @@ fn generate_chunk(
             let sw = (noise.get_noise_2d((x as i32 - 1) as f32, y as f32) + 1.0) / 2.0;
 
             let mut debug_noise: Vec<[f32; 2]> = Vec::new();
-            let avg = (ne.round() + nw.round() + se.round() + sw.round()) / 4.0;
-
-            if avg >= 0.25 {
+            let total = ne.round() + nw.round() + se.round() + sw.round();
+            if total == 4.0 {
+                let debug_cube = debug_cube();
+                commands.spawn((
+                    PbrBundle {
+                        mesh: meshes.add(debug_cube), // Add the custom cube mesh
+                        material: materials.add(Color::from(BLUE)),
+                        transform: Transform::from_xyz(x as f32, 0.0, y as f32)
+                            .with_scale(Vec3::from([0.25, 0.25, 0.25])),
+                        ..default()
+                    },
+                    WireframeColor {
+                        color: Color::from(BLUE),
+                    },
+                ));
+                vertices.push([x as f32, 0.0, y as f32]);
+            } else if total >= 1.0 {
                 debug_noise.push([nw.round(), ne.round()]);
                 debug_noise.push([sw.round(), se.round()]);
 
-                println!("[{:?},{:?}] : {:?}", x, y, debug_noise);
                 vertices.push([x as f32, 0.0, y as f32]);
 
                 let debug_cube = debug_cube();
@@ -55,12 +68,13 @@ fn generate_chunk(
                 commands.spawn((
                     PbrBundle {
                         mesh: meshes.add(debug_cube), // Add the custom cube mesh
+                        material: materials.add(Color::from(RED)),
                         transform: Transform::from_xyz(x as f32, 0.0, y as f32)
                             .with_scale(Vec3::from([0.25, 0.25, 0.25])),
                         ..default()
                     },
                     WireframeColor {
-                        color: Color::WHITE,
+                        color: Color::from(RED),
                     },
                 ));
             } else {
