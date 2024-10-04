@@ -19,13 +19,13 @@ fn generate_chunk(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    const CHUNK_SIZE: u32 = 32;
+    const CHUNK_SIZE: u32 = 64;
 
-    let mut noise = FastNoiseLite::with_seed(1325);
+    let mut noise = FastNoiseLite::with_seed(1337);
 
     noise.set_fractal_type(Some(FractalType::FBm));
     noise.set_fractal_octaves(Some(5));
-    noise.set_frequency(Some(0.04));
+    noise.set_frequency(Some(0.035));
     noise.set_fractal_weighted_strength(Some(0.5));
     noise.set_noise_type(Some(NoiseType::OpenSimplex2));
 
@@ -33,71 +33,136 @@ fn generate_chunk(
 
     let mut indices: Vec<u32> = Vec::new();
 
-    for x in 0..CHUNK_SIZE + 1 {
-        for y in 0..CHUNK_SIZE + 1 {
-            let ne = (noise.get_noise_2d(x as f32, (y as i32 + 1) as f32) + 1.0) / 2.0;
-            let nw = (noise.get_noise_2d((x as i32 - 1) as f32, (y as i32 + 1) as f32) + 1.0) / 2.0;
-            let se = (noise.get_noise_2d(x as f32, y as f32) + 1.0) / 2.0;
-            let sw = (noise.get_noise_2d((x as i32 - 1) as f32, y as f32) + 1.0) / 2.0;
-
-            let mut debug_noise: Vec<[f32; 2]> = Vec::new();
-            let total = ne.round() + nw.round() + se.round() + sw.round();
-            if total == 4.0 {
-                let debug_cube = debug_cube();
-                commands.spawn((
-                    PbrBundle {
-                        mesh: meshes.add(debug_cube), // Add the custom cube mesh
-                        material: materials.add(Color::from(BLUE)),
-                        transform: Transform::from_xyz(x as f32, 0.0, y as f32)
-                            .with_scale(Vec3::from([0.25, 0.25, 0.25])),
-                        ..default()
-                    },
-                    WireframeColor {
-                        color: Color::from(BLUE),
-                    },
-                ));
-                vertices.push([x as f32, 0.0, y as f32]);
-            } else if total >= 1.0 {
-                debug_noise.push([nw.round(), ne.round()]);
-                debug_noise.push([sw.round(), se.round()]);
-
-                vertices.push([x as f32, 0.0, y as f32]);
-
-                let debug_cube = debug_cube();
-
-                commands.spawn((
-                    PbrBundle {
-                        mesh: meshes.add(debug_cube), // Add the custom cube mesh
-                        material: materials.add(Color::from(RED)),
-                        transform: Transform::from_xyz(x as f32, 0.0, y as f32)
-                            .with_scale(Vec3::from([0.25, 0.25, 0.25])),
-                        ..default()
-                    },
-                    WireframeColor {
-                        color: Color::from(RED),
-                    },
-                ));
-            } else {
-                vertices.push([x as f32, 0.0, y as f32]);
-            }
-        }
-    }
-
+    let mut cell = 0;
     for x in 0..CHUNK_SIZE {
         for y in 0..CHUNK_SIZE {
-            let top_left = y * (CHUNK_SIZE + 1) + x;
-            let top_right = top_left + 1;
-            let bottom_left = (y + 1) * (CHUNK_SIZE + 1) + x;
-            let bottom_right = bottom_left + 1;
+            let noise_normalized =
+                ((noise.get_noise_2d(x as f32, y as f32) + 1.0) / 2.0).round() as u32;
 
-            // First triangle
-            indices.push(bottom_right);
-            indices.push(bottom_left);
-            indices.push(top_left);
+            let height = if noise_normalized == 0 { 4.0 } else { 0.0 };
 
-            indices.push(top_right);
-            indices.push(bottom_right);
-            indices.push(top_left);
+            // Generate the main cell surface
+            let bl = [x as f32, height, y as f32];
+            let br = [(x + 1) as f32, height, y as f32];
+            let tl = [x as f32, height, (y + 1) as f32];
+            let tr = [(x + 1) as f32, height, (y + 1) as f32];
+
+            vertices.push(bl);
+            vertices.push(br);
+            vertices.push(tl);
+            vertices.push(tr);
+            // First triangle 0 2 1
+            indices.push(cell);
+            indices.push(cell + 2);
+            indices.push(cell + 1);
+            // Second triangle 1 2 3
+            indices.push(cell + 1);
+            indices.push(cell + 2);
+            indices.push(cell + 3);
+
+            cell += 4;
+
+            // Check neighbors to place walls
+
+            // Check north (y + 1)
+            if y + 1 < CHUNK_SIZE {
+                let north_height =
+                    ((noise.get_noise_2d(x as f32, (y + 1) as f32) + 1.0) / 2.0).round() as u32;
+                if north_height != noise_normalized {
+                    // Create a north wall
+                    let bottom_left = [x as f32, height, (y + 1) as f32];
+                    let bottom_right = [(x + 1) as f32, height, (y + 1) as f32];
+                    let top_left = [x as f32, 4.0, (y + 1) as f32];
+                    let top_right = [(x + 1) as f32, 4.0, (y + 1) as f32];
+                    // Push wall vertices and indices
+                    vertices.push(bottom_left);
+                    vertices.push(bottom_right);
+                    vertices.push(top_left);
+                    vertices.push(top_right);
+                    indices.push(cell);
+                    indices.push(cell + 2);
+                    indices.push(cell + 1);
+                    indices.push(cell + 1);
+                    indices.push(cell + 2);
+                    indices.push(cell + 3);
+                    cell += 4;
+                }
+            }
+
+            // Check east (x + 1)
+            if x + 1 < CHUNK_SIZE {
+                let east_height =
+                    ((noise.get_noise_2d((x + 1) as f32, y as f32) + 1.0) / 2.0).round() as u32;
+                if east_height != noise_normalized {
+                    // Create an east wall
+                    let bottom_left = [(x + 1) as f32, height, y as f32];
+                    let bottom_right = [(x + 1) as f32, height, (y + 1) as f32];
+                    let top_left = [(x + 1) as f32, 4.0, y as f32];
+                    let top_right = [(x + 1) as f32, 4.0, (y + 1) as f32];
+                    // Push wall vertices and indices
+                    vertices.push(bottom_left);
+                    vertices.push(bottom_right);
+                    vertices.push(top_left);
+                    vertices.push(top_right);
+                    indices.push(cell);
+                    indices.push(cell + 1);
+                    indices.push(cell + 2);
+                    indices.push(cell + 2);
+                    indices.push(cell + 1);
+                    indices.push(cell + 3);
+                    cell += 4;
+                }
+            }
+
+            // Check south (y - 1)
+            if y > 0 {
+                let south_height =
+                    ((noise.get_noise_2d(x as f32, (y - 1) as f32) + 1.0) / 2.0).round() as u32;
+                if south_height != noise_normalized {
+                    // Create a south wall
+                    let bottom_left = [x as f32, height, y as f32];
+                    let bottom_right = [(x + 1) as f32, height, y as f32];
+                    let top_left = [x as f32, 4.0, y as f32];
+                    let top_right = [(x + 1) as f32, 4.0, y as f32];
+                    // Push wall vertices and indices
+                    vertices.push(bottom_left);
+                    vertices.push(bottom_right);
+                    vertices.push(top_left);
+                    vertices.push(top_right);
+                    indices.push(cell);
+                    indices.push(cell + 1);
+                    indices.push(cell + 2);
+                    indices.push(cell + 2);
+                    indices.push(cell + 1);
+                    indices.push(cell + 3);
+                    cell += 4;
+                }
+            }
+
+            // Check west (x - 1)
+            if x > 0 {
+                let west_height =
+                    ((noise.get_noise_2d((x - 1) as f32, y as f32) + 1.0) / 2.0).round() as u32;
+                if west_height != noise_normalized {
+                    // Create a west wall
+                    let bottom_left = [x as f32, height, y as f32];
+                    let bottom_right = [x as f32, height, (y + 1) as f32];
+                    let top_left = [x as f32, 4.0, y as f32];
+                    let top_right = [x as f32, 4.0, (y + 1) as f32];
+                    // Push wall vertices and indices
+                    vertices.push(bottom_left);
+                    vertices.push(bottom_right);
+                    vertices.push(top_left);
+                    vertices.push(top_right);
+                    indices.push(cell);
+                    indices.push(cell + 2);
+                    indices.push(cell + 1);
+                    indices.push(cell + 1);
+                    indices.push(cell + 2);
+                    indices.push(cell + 3);
+                    cell += 4;
+                }
+            }
         }
     }
 
